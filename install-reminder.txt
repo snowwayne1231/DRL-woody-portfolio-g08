@@ -13,6 +13,7 @@ pip install torch
 pip install torchvision
 pip install python-dateutil
 pip install pandas
+pip install pandas-datareader
 pip install matplotlib
 pip install gtimer
 pip install cython

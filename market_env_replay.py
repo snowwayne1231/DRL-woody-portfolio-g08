@@ -107,7 +107,8 @@ for src in srcs:
     for env in envs:
         trainer = get_trainer(env=env,**trainer_kwargs)
         file =os.path.join(src,'params.pkl')
-        trainer.policy =  torch.load(file)['evaluation/policy']
+        # trainer.policy =  torch.load(file)['evaluation/policy']
+        trainer.policy =  torch.load(file, map_location=torch.device('cpu'))['evaluation/policy']
         policy = MakeDeterministic(trainer.policy)
         actions, weights,infos = eval_policy(env,policy)
         actions.to_csv(os.path.join(log_dir,f'actions_{id}.csv'))
