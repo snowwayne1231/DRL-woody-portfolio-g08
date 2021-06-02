@@ -95,10 +95,14 @@ def train_model(variant):
     algorithm.train()
 
 
-# ptu.set_gpu_mode(True)
-ptu.set_gpu_mode(False)
 
-fast_forward_scale = 1
+
+
+# ptu.set_gpu_mode(True)
+ptu.set_gpu_mode(False)  # GPU not support
+
+# fast_forward_scale = 1
+fast_forward_scale = 10  # for faster
 
 variant = dict(
     version="normal",
@@ -132,7 +136,8 @@ variant = dict(
         trade_pecentage=1
     ),
     algorithm_kwargs=dict(
-        num_epochs=500,
+        # num_epochs=500,
+        num_epochs=10,  # for simple test
         num_eval_steps_per_epoch=int(1000/fast_forward_scale),
         num_trains_per_train_loop=int(3000/fast_forward_scale),
         num_expl_steps_per_train_loop=int(1000/fast_forward_scale),
@@ -143,7 +148,8 @@ variant = dict(
 )
 
 if __name__ == '__main__':
-    for alpha in (3,2,1.5):
+    # for alpha in (3,2,1.5):
+    for alpha in (3):  # only once
         variant['eval_env_kwargs']['reward_func_kwargs']['alpha'] = alpha
         variant['expl_env_kwargs']['reward_func_kwargs']['alpha'] = alpha
         train_model(variant)

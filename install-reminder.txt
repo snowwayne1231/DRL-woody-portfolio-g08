@@ -1,0 +1,21 @@
+cd rlkit
+pip install -e .
+cd ..
+
+brew install llvm (mac)  /  apt-get install llvm (linux)
+
+conda install llvmlite
+conda install numba
+conda install cudatoolkit
+
+pip install gym
+pip install torch
+pip install torchvision
+pip install python-dateutil
+pip install pandas
+pip install matplotlib
+pip install gtimer
+pip install cython
+pip install lockfile
+pip install mkl
+pip install gitpython
