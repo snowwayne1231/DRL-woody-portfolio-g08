@@ -50,7 +50,8 @@ def fix_action_policy(action):
 
 
 
-ptu.set_gpu_mode(True)
+# ptu.set_gpu_mode(True)
+ptu.set_gpu_mode(False)
 
 #src = r'C:\Users\Woody\Documents\git repository\nccu-thesis\code\output\train_out_20210502_230851'
 srcs=(r"./trained/train_out_20210502_234701",
