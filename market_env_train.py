@@ -22,8 +22,8 @@ def load_dataset():
     current_folder = os.path.dirname(__file__)
     ret_csv_train = os.path.join(current_folder, './data/investments_returns_train.csv')
     ret_csv_val = os.path.join(current_folder, './data/investments_returns_validation.csv')
-    # features_csv = os.path.join(current_folder, './data/features_v03.csv')
-    features_csv = os.path.join(current_folder, './data/features_test.csv')
+    features_csv = os.path.join(current_folder, './data/features_v03.csv')
+    # features_csv = os.path.join(current_folder, './data/features_test.csv')
     df_ret_train = pd.read_csv(ret_csv_train, parse_dates=['Date'], index_col=['Date'])
     df_ret_val = pd.read_csv(ret_csv_val, parse_dates=['Date'], index_col=['Date'])
     df_feature = pd.read_csv(features_csv, parse_dates=['Date'], index_col=['Date'])
@@ -59,7 +59,8 @@ def train_model(variant):
         df = pd.read_csv(progress_csv)
         kpis = ['cagr', 'dd', 'mdd', 'wealths','std']
         srcs = ['evaluation', 'exploration']
-        n = 50
+        # n = 50
+        n = 2
         for kpi in kpis:
             series = map(lambda s: df[f'{s}/env_infos/final/{kpi} Mean'], srcs)
             plot_ma(series=series, lables=srcs, title=kpi, n=n)
