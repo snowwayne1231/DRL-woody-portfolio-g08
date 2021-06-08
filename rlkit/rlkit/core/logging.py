@@ -176,10 +176,11 @@ class Logger(object):
             out = self._prefix_str + out
         if with_timestamp:
             now = datetime.datetime.now(dateutil.tz.tzlocal())
-            timestamp = now.strftime('%Y-%m-%d %H:%M:%S.%f %Z')
+            timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
             out = "%s | %s" % (timestamp, out)
         if not self._log_tabular_only:
             # Also log to stdout
+            # print('============================')
             print(out)
             for fd in list(self._text_fds.values()):
                 fd.write(out + '\n')

@@ -18,27 +18,33 @@ from datetime import datetime
 from rlkit.torch.torch_rl_algorithm import TorchBatchRLAlgorithm
 import gtimer as gt
 
+
+# fast_forward_scale = 1
+fast_forward_scale = 1  # for faster
+
+
+gym.envs.register(id='MarketEnv-v0', entry_point='common.market_env:MarketEnv', max_episode_steps=1000)
+# ptu.set_gpu_mode(True)
+ptu.set_gpu_mode(False)  # GPU not support
+
+
 def load_dataset():
     current_folder = os.path.dirname(__file__)
     ret_csv_train = os.path.join(current_folder, './data/investments_returns_train.csv')
     ret_csv_val = os.path.join(current_folder, './data/investments_returns_validation.csv')
-    features_csv = os.path.join(current_folder, './data/features_v03.csv')
-    # features_csv = os.path.join(current_folder, './data/features_test.csv')
+    # features_csv = os.path.join(current_folder, './data/features_v03.csv')
+    features_csv = os.path.join(current_folder, './data/features_test.csv')
     df_ret_train = pd.read_csv(ret_csv_train, parse_dates=['Date'], index_col=['Date'])
     df_ret_val = pd.read_csv(ret_csv_val, parse_dates=['Date'], index_col=['Date'])
     df_feature = pd.read_csv(features_csv, parse_dates=['Date'], index_col=['Date'])
     return df_ret_train, df_ret_val, df_feature
-
-
-gym.envs.register(id='MarketEnv-v0', entry_point='common.market_env:MarketEnv', max_episode_steps=1000)
 
 def train_model(variant):
     gt.reset_root()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_dir = f"./output/train_out_{timestamp}/"
 
-    setup_logger('name-of-experiment', variant=variant,
-             snapshot_mode='gap_and_last', snapshot_gap=20, log_dir=log_dir)
+    setup_logger('name-of-experiment', variant=variant, snapshot_mode='gap_and_last', snapshot_gap=20, log_dir=log_dir)
 
     expl_env_kwargs = variant['expl_env_kwargs']
     eval_env_kwargs = variant['eval_env_kwargs']
@@ -54,13 +60,16 @@ def train_model(variant):
     eval_env = NormalizedBoxEnv(gym.make('MarketEnv-v0', returns=df_ret_val, features=df_feature,
                                          **eval_env_kwargs))
 
+    eval_env.features.to_csv(os.path.join(log_dir, 'env_loaded_features.csv')) # output the features after env parsed it
+    eval_env.returns.to_csv(os.path.join(log_dir, 'env_loaded_returns.csv')) # output the returns after env parsed it
+
     def post_epoch_func(self, epoch):
         progress_csv = os.path.join(log_dir, 'progress.csv')
         df = pd.read_csv(progress_csv)
         kpis = ['cagr', 'dd', 'mdd', 'wealths','std']
         srcs = ['evaluation', 'exploration']
         # n = 50
-        n = 2
+        n = int(50 / fast_forward_scale)  #  for rolling
         for kpi in kpis:
             series = map(lambda s: df[f'{s}/env_infos/final/{kpi} Mean'], srcs)
             plot_ma(series=series, lables=srcs, title=kpi, n=n)
@@ -70,6 +79,8 @@ def train_model(variant):
     trainer = get_trainer(env=eval_env, **trainer_kwargs)
     policy = trainer.policy
     eval_policy = MakeDeterministic(policy)
+    # print('policy: ', policy)
+    # print('eval_policy: ', eval_policy)
     #eval_policy = policy
     eval_path_collector = MdpPathCollector(
         eval_env,
@@ -92,19 +103,14 @@ def train_model(variant):
         replay_buffer=replay_buffer,
         **variant['algorithm_kwargs']
     )
-    algorithm.post_epoch_funcs = [post_epoch_func, ]
-    algorithm.to(ptu.device)
-    algorithm.train()
+    try:
+        algorithm.post_epoch_funcs = [post_epoch_func, ]
+        algorithm.to(ptu.device)
+        algorithm.train()
+    except KeyboardInterrupt:
+        print('KeyboardInterrupt.')
+        exit(2)
 
-
-
-
-
-# ptu.set_gpu_mode(True)
-ptu.set_gpu_mode(False)  # GPU not support
-
-# fast_forward_scale = 1
-fast_forward_scale = 10  # for faster
 
 variant = dict(
     version="normal",
@@ -123,7 +129,8 @@ variant = dict(
             drop_only=False
         )
         ,
-        trade_freq='weeks',
+        # trade_freq='weeks',
+        trade_freq='months',
         trade_pecentage=0.2
     ),
     eval_env_kwargs=dict(
@@ -134,12 +141,13 @@ variant = dict(
             threshold=0.002,
             drop_only=False
         ),
-        trade_freq='weeks',
+        # trade_freq='weeks',
+        trade_freq='months',
         trade_pecentage=1
     ),
     algorithm_kwargs=dict(
         # num_epochs=500,
-        num_epochs=10,  # for simple test
+        num_epochs=int(500/fast_forward_scale),  # for simple test
         num_eval_steps_per_epoch=int(1000/fast_forward_scale),
         num_trains_per_train_loop=int(3000/fast_forward_scale),
         num_expl_steps_per_train_loop=int(1000/fast_forward_scale),
