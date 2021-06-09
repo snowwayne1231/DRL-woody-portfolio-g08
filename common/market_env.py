@@ -57,9 +57,10 @@ def risk_adjusted_reward(env, threshold: float=float("inf"),
         return reward
     if (reward >= 0 and drop_only):
         return reward
-    reward = reward - alpha*(abs(reward) - threshold)
+    # reward = reward - alpha*(abs(reward) - threshold)
+    reward = reward - (abs(reward) - threshold)
 
-    return reward
+    return reward * alpha
 
 
 def resample_backfill(df, rule):
@@ -277,7 +278,6 @@ class MarketEnv(gym.Env):
         if (state.shape != self.observation_space.shape):
             raise Exception('Shape of state {state.shape} is incorrect should be {self.observation_space.shape}')
         return state
-        # return state.concat([1])
 
     def _get_info(self):
         start_date = self.returns.index[self.start_index]

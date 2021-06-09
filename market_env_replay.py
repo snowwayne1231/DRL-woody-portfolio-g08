@@ -32,8 +32,10 @@ def eval_policy(env, policy):
     actions=[]
     while not done:
         action = policy.get_actions(state)
+        print('action: ', np.max(action))
+        print('action argmax: ', np.argmax(action))
         info['date'] = Timestamp(info['date'] )
-        infos.append(info)        
+        infos.append(info)
         state, reward, done, info = env.step(action)
         actions.append(action)
         weights.append((get_unwrapped_env(env)).weights)
@@ -54,10 +56,20 @@ def fix_action_policy(action):
 ptu.set_gpu_mode(False)
 
 #src = r'C:\Users\Woody\Documents\git repository\nccu-thesis\code\output\train_out_20210502_230851'
-srcs=(r"./trained/train_out_20210502_234701",
-    r"./data/analysis/drop/0.006_train_out_20210507_205804",
-    r"./data/analysis/drop/0.002_train_out_20210511_073123"
-    )
+# srcs=(r"./trained/train_out_20210502_234701",
+#     r"./data/analysis/drop/0.006_train_out_20210507_205804",
+#     r"./data/analysis/drop/0.002_train_out_20210511_073123"
+#     )
+# srcs = ['./output/train_out_20210609_192504']
+abs_path = os.path.abspath('output')
+all_subdirs = [os.path.join(abs_path,d) for d in os.listdir(abs_path) if os.path.isdir(os.path.join(abs_path,d)) and 'train_out' in d]
+if len(all_subdirs) > 0:
+    latest_subdir = max(all_subdirs, key=os.path.getmtime)
+    srcs = [latest_subdir]
+else:
+    print([d for d in os.listdir(abs_path)])
+    exit(2)
+
 
 gym.envs.register(id='MarketEnv-v0', entry_point='common.market_env:MarketEnv', max_episode_steps=1000)
 

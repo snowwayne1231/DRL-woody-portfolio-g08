@@ -159,3 +159,5 @@ cython_debug/
 **/rlkit_out*/
 
 output/*
+
+.DS_Store

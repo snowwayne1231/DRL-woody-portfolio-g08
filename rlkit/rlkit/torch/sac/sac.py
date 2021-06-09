@@ -95,7 +95,10 @@ class SACTrainer(TorchTrainer, LossFunction):
     def train_from_torch(self, batch):
         gt.blank_stamp()
         ###
-        print('train_from_torch: ', batch)
+        # print('train_from_torch observations : ', batch['observations'][:5])
+        # print('train_from_torch next_observations : ', batch['next_observations'][:5])
+        # print('train_from_torch actions : ', batch['actions'][:5])
+        # print('train_from_torch rewards : ', batch['rewards'][:5])
         ###
         losses, stats = self.compute_loss(
             batch,

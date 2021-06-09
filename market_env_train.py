@@ -33,7 +33,7 @@ def load_dataset():
     ret_csv_train = os.path.join(current_folder, './data/investments_returns_train.csv')
     ret_csv_val = os.path.join(current_folder, './data/investments_returns_validation.csv')
     # features_csv = os.path.join(current_folder, './data/features_v03.csv')
-    features_csv = os.path.join(current_folder, './data/features_test.csv')
+    features_csv = os.path.join(current_folder, './data/informationTotal_split.csv')
     df_ret_train = pd.read_csv(ret_csv_train, parse_dates=['Date'], index_col=['Date'])
     df_ret_val = pd.read_csv(ret_csv_val, parse_dates=['Date'], index_col=['Date'])
     df_feature = pd.read_csv(features_csv, parse_dates=['Date'], index_col=['Date'])
@@ -60,8 +60,9 @@ def train_model(variant):
     eval_env = NormalizedBoxEnv(gym.make('MarketEnv-v0', returns=df_ret_val, features=df_feature,
                                          **eval_env_kwargs))
 
-    expl_env.features.to_csv(os.path.join(log_dir, 'env_loaded_features.csv')) # output the features after env parsed it
+    expl_env.features.to_csv(os.path.join(log_dir, 'env_loaded_train_features.csv')) # output the features after env parsed it
     expl_env.returns.to_csv(os.path.join(log_dir, 'env_loaded_train_returns.csv')) # output the returns after env parsed it
+    eval_env.features.to_csv(os.path.join(log_dir, 'env_loaded_validation_features.csv'))
     eval_env.returns.to_csv(os.path.join(log_dir, 'env_loaded_validation_returns.csv'))
 
     def post_epoch_func(self, epoch):
@@ -124,7 +125,8 @@ variant = dict(
     expl_env_kwargs=dict(
         # noise=0.3,
         noise=0,
-        state_scale=0.3,
+        # state_scale=0.3,
+        state_scale=0.5,
         reward_func=risk_adjusted_reward,
         reward_func_kwargs=dict(
             threshold=0.03,
@@ -133,11 +135,11 @@ variant = dict(
         ,
         # trade_freq='weeks',
         trade_freq='months',
-        trade_pecentage=0.2
+        trade_pecentage=0.5
     ),
     eval_env_kwargs=dict(
         noise=0,
-        state_scale=0.3,
+        state_scale=0.5,
         reward_func=risk_adjusted_reward,
         reward_func_kwargs=dict(
             threshold=0.02,
