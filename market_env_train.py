@@ -20,7 +20,8 @@ import gtimer as gt
 
 
 # fast_forward_scale = 1
-fast_forward_scale = 10  # for faster
+fast_forward_scale = 2  # for faster
+epoch_target = 1000
 
 
 gym.envs.register(id='MarketEnv-v0', entry_point='common.market_env:MarketEnv', max_episode_steps=1000)
@@ -71,7 +72,7 @@ def train_model(variant):
         kpis = ['cagr', 'dd', 'mdd', 'wealths','std']
         srcs = ['evaluation', 'exploration']
         # n = 50
-        n = int(50 / fast_forward_scale)  #  for rolling
+        n = int(epoch_target / 10)  #  for rolling
         for kpi in kpis:
             series = map(lambda s: df[f'{s}/env_infos/final/{kpi} Mean'], srcs)
             plot_ma(series=series, lables=srcs, title=kpi, n=n)
@@ -151,7 +152,7 @@ variant = dict(
     ),
     algorithm_kwargs=dict(
         # num_epochs=500,
-        num_epochs=int(500/fast_forward_scale),  # for simple test
+        num_epochs=epoch_target,  # for simple test
         num_eval_steps_per_epoch=int(1000/fast_forward_scale),
         num_trains_per_train_loop=int(3000/fast_forward_scale),
         num_expl_steps_per_train_loop=int(1000/fast_forward_scale),
