@@ -20,7 +20,7 @@ import gtimer as gt
 
 
 # fast_forward_scale = 1
-fast_forward_scale = 1  # for faster
+fast_forward_scale = 10  # for faster
 
 
 gym.envs.register(id='MarketEnv-v0', entry_point='common.market_env:MarketEnv', max_episode_steps=1000)
@@ -60,8 +60,9 @@ def train_model(variant):
     eval_env = NormalizedBoxEnv(gym.make('MarketEnv-v0', returns=df_ret_val, features=df_feature,
                                          **eval_env_kwargs))
 
-    eval_env.features.to_csv(os.path.join(log_dir, 'env_loaded_features.csv')) # output the features after env parsed it
-    eval_env.returns.to_csv(os.path.join(log_dir, 'env_loaded_returns.csv')) # output the returns after env parsed it
+    expl_env.features.to_csv(os.path.join(log_dir, 'env_loaded_features.csv')) # output the features after env parsed it
+    expl_env.returns.to_csv(os.path.join(log_dir, 'env_loaded_train_returns.csv')) # output the returns after env parsed it
+    eval_env.returns.to_csv(os.path.join(log_dir, 'env_loaded_validation_returns.csv'))
 
     def post_epoch_func(self, epoch):
         progress_csv = os.path.join(log_dir, 'progress.csv')
@@ -121,7 +122,8 @@ variant = dict(
         reward_scale=1000,  # Only used by SAC
     ),
     expl_env_kwargs=dict(
-        noise=0.3,
+        # noise=0.3,
+        noise=0,
         state_scale=0.3,
         reward_func=risk_adjusted_reward,
         reward_func_kwargs=dict(
@@ -138,7 +140,7 @@ variant = dict(
         state_scale=0.3,
         reward_func=risk_adjusted_reward,
         reward_func_kwargs=dict(
-            threshold=0.002,
+            threshold=0.02,
             drop_only=False
         ),
         # trade_freq='weeks',

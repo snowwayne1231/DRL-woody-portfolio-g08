@@ -10,7 +10,7 @@ from pandas import DataFrame
 
 
 # 手續費 
-CHANGE_WEIGHT_FEE_RATIO = 0.01
+CHANGE_WEIGHT_FEE_RATIO = 0.001
 
 
 def proration_weights(action):
@@ -277,6 +277,7 @@ class MarketEnv(gym.Env):
         if (state.shape != self.observation_space.shape):
             raise Exception('Shape of state {state.shape} is incorrect should be {self.observation_space.shape}')
         return state
+        # return state.concat([1])
 
     def _get_info(self):
         start_date = self.returns.index[self.start_index]

@@ -94,6 +94,9 @@ class SACTrainer(TorchTrainer, LossFunction):
 
     def train_from_torch(self, batch):
         gt.blank_stamp()
+        ###
+        print('train_from_torch: ', batch)
+        ###
         losses, stats = self.compute_loss(
             batch,
             skip_statistics=not self._need_to_update_eval_statistics,
