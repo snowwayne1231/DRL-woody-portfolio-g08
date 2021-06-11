@@ -10,12 +10,15 @@ from pandas import DataFrame
 
 
 # 手續費 
-CHANGE_WEIGHT_FEE_RATIO = 0.001
+CHANGE_WEIGHT_FEE_RATIO = 0.01
+CHANGE_WEIGHT_STOCK_FEE_RATIO = 0.02
 
 
 def proration_weights(action):
     if action.sum() == 0:
         action = np.random.rand(*action.shape)
+    result = action / action.sum()
+    max_idx = np.argmax(result)
     return action / action.sum()
 
 # 改變持倉比率
@@ -33,7 +36,7 @@ def simple_return_reward(env):
     return reward
 
 
-def sharpe_ratio_reward(env):
+def sharpe_ratio_reward(env, **kwargs):
     r = env.profit
     a = env.mean
     b = env.mean_square
@@ -58,7 +61,8 @@ def risk_adjusted_reward(env, threshold: float=float("inf"),
     if (reward >= 0 and drop_only):
         return reward
     # reward = reward - alpha*(abs(reward) - threshold)
-    reward = reward - (abs(reward) - threshold)
+    if reward < 0: # 賠錢加強 reward 扣分
+        reward = reward - alpha*(abs(reward) - threshold) 
 
     return reward * alpha
 
@@ -125,6 +129,7 @@ class MarketEnv(gym.Env):
         returns = returns[(returns.index.isin(features.index))]
         self.features = features
         self.returns = returns
+        # self.__ = 0.01
         if show_info:
             sd = returns.index[0]
             ed = returns.index[-1]
@@ -194,6 +199,7 @@ class MarketEnv(gym.Env):
     #     return state, reward, done, info
 
     def step(self, action):
+        # print('action: ', action)
         if self.current_index > self.end_index:
             raise Exception(f'current_index {self.current_index} exceed end_index{self.end_index}')
 
@@ -217,13 +223,14 @@ class MarketEnv(gym.Env):
         _charge_fee_ratio = (np.abs(_change_weights) * CHANGE_WEIGHT_FEE_RATIO).sum() # 持倉變動算出 手續費比率
         _charged_wealth = _return_wealth - _charge_fee_ratio # 收完收續費後的 資產
 
-        reward = _return_wealth_next - _charged_wealth
+        # reward = _return_wealth_next - _charged_wealth
         
         self.episode += 1
         
-        # self.profit = (_charged_wealth - _previous_wealth) / _previous_wealth
         self.profit = (_return_wealth_next - _return_wealth - _charge_fee_ratio) / _previous_wealth
         self.wealth = _charged_wealth
+        # self.wealth = _charged_wealth * (1+self.__)
+        
         self.weights = _next_weights
         
         reward = self.reward_func(self,**self.reward_func_kwargs)
@@ -268,6 +275,7 @@ class MarketEnv(gym.Env):
         self.profit=0
         self.reward=0
         self.drawdown = 0
+        # self.__ = min(2, self.__ * 1.04)
         return self._get_state()
 
     def _get_state(self):

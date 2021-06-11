@@ -20,8 +20,8 @@ import gtimer as gt
 
 
 # fast_forward_scale = 1
-fast_forward_scale = 2  # for faster
-epoch_target = 1000
+fast_forward_scale = 10  # for faster
+epoch_target = 200
 
 
 gym.envs.register(id='MarketEnv-v0', entry_point='common.market_env:MarketEnv', max_episode_steps=1000)
@@ -34,7 +34,7 @@ def load_dataset():
     ret_csv_train = os.path.join(current_folder, './data/investments_returns_train.csv')
     ret_csv_val = os.path.join(current_folder, './data/investments_returns_validation.csv')
     # features_csv = os.path.join(current_folder, './data/features_v03.csv')
-    features_csv = os.path.join(current_folder, './data/informationTotal_split.csv')
+    features_csv = os.path.join(current_folder, './data/features_v04-g8.csv')
     df_ret_train = pd.read_csv(ret_csv_train, parse_dates=['Date'], index_col=['Date'])
     df_ret_val = pd.read_csv(ret_csv_val, parse_dates=['Date'], index_col=['Date'])
     df_feature = pd.read_csv(features_csv, parse_dates=['Date'], index_col=['Date'])
@@ -75,7 +75,7 @@ def train_model(variant):
         n = int(epoch_target / 10)  #  for rolling
         for kpi in kpis:
             series = map(lambda s: df[f'{s}/env_infos/final/{kpi} Mean'], srcs)
-            plot_ma(series=series, lables=srcs, title=kpi, n=n)
+            plot_ma(series=series, lables=srcs, title=f'[ {kpi.upper()} ]', n=n)
             plt.savefig(os.path.join(log_dir, f'{kpi}.png'))
             plt.close()
 
@@ -128,7 +128,7 @@ variant = dict(
         noise=0,
         # state_scale=0.3,
         state_scale=0.5,
-        reward_func=risk_adjusted_reward,
+        reward_func=sharpe_ratio_reward,
         reward_func_kwargs=dict(
             threshold=0.03,
             drop_only=False
@@ -141,7 +141,7 @@ variant = dict(
     eval_env_kwargs=dict(
         noise=0,
         state_scale=0.5,
-        reward_func=risk_adjusted_reward,
+        reward_func=sharpe_ratio_reward,
         reward_func_kwargs=dict(
             threshold=0.02,
             drop_only=False
@@ -158,7 +158,7 @@ variant = dict(
         num_expl_steps_per_train_loop=int(1000/fast_forward_scale),
         min_num_steps_before_training=int(1000/fast_forward_scale),
         max_path_length=int(1000/fast_forward_scale),
-        batch_size=256,
+        batch_size=16,
     )
 )
 

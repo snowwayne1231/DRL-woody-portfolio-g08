@@ -17,11 +17,16 @@ def set_matplotlib_style(mode=None):
 
 def plot_ma(series,lables,title,n):
     fig, ax = matplotlib.pyplot.subplots()
+    _colors = ['#800080', '#008000', '#0000ff', 'orange', 'red', 'yellow', 'black']
+    _c_idx = 0
+    ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter())
     for s,label in zip(series,lables):
         x=range(len(s))
-        y_std = s.rolling(n).std()   
-        y_mean = s.rolling(n).mean()
-        ax.plot(y_mean,label=label)
+        y_std = s.rolling(n).std() * 100
+        y_mean = s.rolling(n).mean() * 100
+        ax.plot(y_mean,label=label, color=_colors[_c_idx])
         ax.set_title(title)
-        ax.fill_between(x,y_mean-y_std, y_mean+y_std, alpha=0.2)
+        ax.fill_between(x,y_mean-y_std, y_mean+y_std, alpha=0.2, color=_colors[_c_idx])
+        _c_idx+=1 if _c_idx < len(_colors)-1 else 0
+        
     matplotlib.pyplot.legend()            
