@@ -246,9 +246,12 @@ class MarketEnv(gym.Env):
         self.drawdown = max(0, (self.max_weath - self.wealth) / self.max_weath)
         self.max_drawdown = max(self.max_drawdown, self.drawdown)
         self.mean = (self.mean * (self.episode-1) + self.profit)/self.episode
-        self.std = (self.std * (self.episode-1) + self.profit)/self.episode
         self.mean_square = (self.mean_square * (self.episode-1) + self.profit ** 2)/self.episode
-
+        if self.episode > 1:
+            k = ((self.episode)/(self.episode-1))**0.5
+            a = self.mean
+            b = self.mean_square
+            self.std = k*(b-a**2)**0.5
         info = self._get_info()
         state = self._get_state()
         
