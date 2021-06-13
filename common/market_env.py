@@ -37,19 +37,25 @@ def simple_return_reward(env):
 
 
 def sharpe_ratio_reward(env, **kwargs):
-    r = env.profit
-    a = env.mean
-    b = env.mean_square
-    if (b-a**2) == 0:
-        reward = 0
-    else:
-        sharpe_old = a/((b-a*2)*0.5)
-        eta = 0.06
-        a_new = a * (1-eta)+eta*r
-        b_new = b*(1-eta)+eta*r*r
-        sharpe_new = a_new/((b_new-a_new*2)*0.5)
-        reward = sharpe_new-sharpe_old
-    return reward
+    if env.std == 0:
+        return 0
+    return env.mean / env.std
+
+     
+    # r = env.profit
+    # a = env.mean
+   
+    # b = env.mean_square
+    # if (b-a**2) == 0:
+    #     reward = 0
+    # else:
+    #     sharpe_old = a/((b-a*2)*0.5)
+    #     eta = 0.06
+    #     a_new = a * (1-eta)+eta*r
+    #     b_new = b*(1-eta)+eta*r*r
+    #     sharpe_new = a_new/((b_new-a_new*2)*0.5)
+    #     reward = sharpe_new-sharpe_old
+    # return reward
 
 
 def risk_adjusted_reward(env, threshold: float=float("inf"), 
@@ -240,6 +246,7 @@ class MarketEnv(gym.Env):
         self.drawdown = max(0, (self.max_weath - self.wealth) / self.max_weath)
         self.max_drawdown = max(self.max_drawdown, self.drawdown)
         self.mean = (self.mean * (self.episode-1) + self.profit)/self.episode
+        self.std = (self.std * (self.episode-1) + self.profit)/self.episode
         self.mean_square = (self.mean_square * (self.episode-1) + self.profit ** 2)/self.episode
 
         info = self._get_info()
@@ -275,6 +282,7 @@ class MarketEnv(gym.Env):
         self.profit=0
         self.reward=0
         self.drawdown = 0
+        self.std = 0
         # self.__ = min(2, self.__ * 1.04)
         return self._get_state()
 
