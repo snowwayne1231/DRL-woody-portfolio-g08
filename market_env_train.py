@@ -31,8 +31,10 @@ ptu.set_gpu_mode(False)  # GPU not support
 
 def load_dataset():
     current_folder = os.path.dirname(__file__)
-    ret_csv_train = os.path.join(current_folder, './data/investments_returns_train.csv')
-    ret_csv_val = os.path.join(current_folder, './data/investments_returns_validation.csv')
+    # ret_csv_train = os.path.join(current_folder, './data/investments_returns_train.csv')
+    # ret_csv_val = os.path.join(current_folder, './data/investments_returns_validation.csv')
+    ret_csv_train = os.path.join(current_folder, './data/inv_returns_train.csv')
+    ret_csv_val = os.path.join(current_folder, './data/inv_returns_validation.csv')
     # features_csv = os.path.join(current_folder, './data/features_v03.csv')
     features_csv = os.path.join(current_folder, './data/features_v04-g8.csv')
     df_ret_train = pd.read_csv(ret_csv_train, parse_dates=['Date'], index_col=['Date'])
