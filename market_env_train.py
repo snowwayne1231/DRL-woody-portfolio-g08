@@ -10,7 +10,7 @@ import os
 import common
 import matplotlib.pyplot as plt
 from common.trainer import get_trainer
-from common.market_env import simple_return_reward, sharpe_ratio_reward, risk_adjusted_reward
+from common.market_env import simple_return_reward, sharpe_ratio_reward, risk_adjusted_reward, sharpe_ratio_reward_g8_v2
 from common.matplotlib_extend import plot_ma
 import rlkit.torch.pytorch_util as ptu
 import numpy as np
@@ -20,8 +20,8 @@ import gtimer as gt
 
 
 # fast_forward_scale = 1
-fast_forward_scale = 10  # for faster
-epoch_target = 200
+fast_forward_scale = 8  # for faster
+epoch_target = 500
 
 
 gym.envs.register(id='MarketEnv-v0', entry_point='common.market_env:MarketEnv', max_episode_steps=1000)
@@ -68,18 +68,32 @@ def train_model(variant):
     eval_env.features.to_csv(os.path.join(log_dir, 'env_loaded_validation_features.csv'))
     eval_env.returns.to_csv(os.path.join(log_dir, 'env_loaded_validation_returns.csv'))
 
+    __nl__mw = 1.05
     def post_epoch_func(self, epoch):
-        progress_csv = os.path.join(log_dir, 'progress.csv')
-        df = pd.read_csv(progress_csv)
-        kpis = ['cagr', 'dd', 'mdd', 'wealths','std']
-        srcs = ['evaluation', 'exploration']
-        # n = 50
+        nonlocal __nl__mw
         n = int(epoch_target / 10)  #  for rolling
-        for kpi in kpis:
-            series = map(lambda s: df[f'{s}/env_infos/final/{kpi} Mean'], srcs)
-            plot_ma(series=series, lables=srcs, title=f'[ {kpi.upper()} ]', n=n)
-            plt.savefig(os.path.join(log_dir, f'{kpi}.png'))
-            plt.close()
+        round = epoch+1
+        if (round) % n == 0:
+            progress_csv = os.path.join(log_dir, 'progress.csv')
+            df = pd.read_csv(progress_csv)
+            kpis = ['cagr', 'dd', 'mdd', 'wealths','std']
+            srcs = ['evaluation', 'exploration']
+            
+            for kpi in kpis:
+                series = map(lambda s: df[f'{s}/env_infos/final/{kpi} Mean'], srcs)
+                plot_ma(series=series, lables=srcs, title=f'[ {kpi.upper()} ]', n=n)
+                plt.savefig(os.path.join(log_dir, f'{kpi}.png'))
+                plt.close()
+
+        inner_eval_env = self.eval_env._wrapped_env
+        if inner_eval_env.wealth > __nl__mw:
+            __nl__mw = inner_eval_env.wealth
+            inner_eval_env.df_weights.fillna(0).applymap('{:,.2%}'.format).to_csv(os.path.join(log_dir, f'env_eval_weights_{round}_w{__nl__mw}.csv'))
+                # applymap(lambda x: f'{float(x) * 100} %')
+
+        # print('post_epoch_func self.eval_env __dict__: ', self.eval_env.__dict__)
+        # print(self.eval_env._wrapped_env.df_weights)
+            
 
     trainer = get_trainer(env=eval_env, **trainer_kwargs)
     policy = trainer.policy
@@ -99,6 +113,16 @@ def train_model(variant):
         variant['replay_buffer_size'],
         expl_env,
     )
+
+    # fix variant['algorithm_kwargs']
+    variant['algorithm_kwargs']['num_eval_steps_per_epoch'] = ((len(eval_env.returns.index) -1) * variant['algorithm_kwargs']['batch_size'])
+    
+    # variant['algorithm_kwargs']['num_trains_per_train_loop'] = 16
+    # variant['algorithm_kwargs']['num_expl_steps_per_train_loop'] = 16
+    # variant['algorithm_kwargs']['min_num_steps_before_training'] = 16
+    # variant['algorithm_kwargs']['max_path_length'] = 16
+    
+
     algorithm = TorchBatchRLAlgorithm(
         trainer=trainer,
         exploration_env=expl_env,
@@ -130,7 +154,8 @@ variant = dict(
         noise=0,
         # state_scale=0.3,
         state_scale=0.5,
-        reward_func=sharpe_ratio_reward,
+        # reward_func=sharpe_ratio_reward,
+        reward_func=sharpe_ratio_reward_g8_v2,
         reward_func_kwargs=dict(
             threshold=0.03,
             drop_only=False
@@ -143,7 +168,8 @@ variant = dict(
     eval_env_kwargs=dict(
         noise=0,
         state_scale=0.5,
-        reward_func=sharpe_ratio_reward,
+        # reward_func=sharpe_ratio_reward,
+        reward_func=sharpe_ratio_reward_g8_v2,
         reward_func_kwargs=dict(
             threshold=0.02,
             drop_only=False
@@ -166,7 +192,8 @@ variant = dict(
 
 if __name__ == '__main__':
     # for alpha in (3,2,1.5):
-    for alpha in [2]:  # only once
+    # for alpha in [3, 2]:  # try 2 times
+    for alpha in [3]:
         variant['eval_env_kwargs']['reward_func_kwargs']['alpha'] = alpha
         variant['expl_env_kwargs']['reward_func_kwargs']['alpha'] = alpha
         train_model(variant)

@@ -10,23 +10,45 @@ from pandas import DataFrame
 
 
 # 手續費 
-CHANGE_WEIGHT_FEE_RATIO = 0.01
+# CHANGE_WEIGHT_FEE_RATIO = 0.00  #  sharp ratio 用在無手續費時績效好
+CHANGE_WEIGHT_FEE_RATIO = 0.02
 CHANGE_WEIGHT_STOCK_FEE_RATIO = 0.02
+# 只選前幾名標的
+NUM_CHOICE_STOCK = 4
+# 最大持倉
+RATIO_CONDITION_MAX_HOLD = 0.75
 
 
 def proration_weights(action):
     if action.sum() == 0:
         action = np.random.rand(*action.shape)
     result = action / action.sum()
-    max_idx = np.argmax(result)
-    return action / action.sum()
+    return result
 
 # 改變持倉比率
 def proration_env_weights(env, action):
     if action.sum() == 0:
         action = np.random.rand(*action.shape)
     _before_weights = env.weights
-    _next_weights = action / action.sum()
+    _argsort = np.argsort(action)
+    _chosen_indices = _argsort[::-1][:NUM_CHOICE_STOCK]
+    # _next_weights = action / action.sum()
+
+    _next_weights = np.zeros(*action.shape)
+    _redistribute_weights = np.array([action[_i] / (idx+1) for idx, _i in enumerate(_chosen_indices)])
+    _redistribute_weights = _redistribute_weights / _redistribute_weights.sum()
+
+    if _redistribute_weights[0] > RATIO_CONDITION_MAX_HOLD: # 排序過 第一個一定最大
+        assert RATIO_CONDITION_MAX_HOLD > 0.5
+        _ratio_splited = (_redistribute_weights[0] - RATIO_CONDITION_MAX_HOLD) / (len(_redistribute_weights) -1) # 平均分散
+        _redistribute_weights = _redistribute_weights + _ratio_splited
+        _redistribute_weights[0] = RATIO_CONDITION_MAX_HOLD
+        
+    
+    for idx, _i in enumerate(_chosen_indices):
+        _next_weights[_i] = _redistribute_weights[idx]
+    
+    # print('_next_weights: ', _next_weights)
     _gap_weights = _next_weights - _before_weights
     return _gap_weights
 
@@ -56,6 +78,17 @@ def sharpe_ratio_reward(env, **kwargs):
     #     sharpe_new = a_new/((b_new-a_new*2)*0.5)
     #     reward = sharpe_new-sharpe_old
     # return reward
+
+
+def sharpe_ratio_reward_g8_v2(env, threshold, alpha, **kwargs):
+    if env.std == 0:
+        return 0
+    reward = env.mean / env.std
+    if env.profit < 0:
+        reward = (env.profit-1) * alpha
+    elif env.profit > threshold:
+        reward * alpha
+    return reward
 
 
 def risk_adjusted_reward(env, threshold: float=float("inf"), 
@@ -227,20 +260,22 @@ class MarketEnv(gym.Env):
 
         
         _charge_fee_ratio = (np.abs(_change_weights) * CHANGE_WEIGHT_FEE_RATIO).sum() # 持倉變動算出 手續費比率
+        self.total_fee_ratio += _charge_fee_ratio
         _charged_wealth = _return_wealth - _charge_fee_ratio # 收完收續費後的 資產
 
         # reward = _return_wealth_next - _charged_wealth
         
         self.episode += 1
         
-        self.profit = (_return_wealth_next - _return_wealth - _charge_fee_ratio) / _previous_wealth
-        self.wealth = _charged_wealth
+        self.profit = (_return_wealth_next - _charge_fee_ratio) / _previous_wealth
+        self.wealth = max(_charged_wealth, 0.01)
         # self.wealth = _charged_wealth * (1+self.__)
         
         self.weights = _next_weights
+        self.df_weights.iloc[self.current_index] = _next_weights
         
         reward = self.reward_func(self,**self.reward_func_kwargs)
-        self.reward = reward
+        self.reward += reward
 
         self.max_weath = max(self.wealth, self.max_weath)
         self.drawdown = max(0, (self.max_weath - self.wealth) / self.max_weath)
@@ -256,6 +291,9 @@ class MarketEnv(gym.Env):
         state = self._get_state()
         
         self.current_index += 1
+
+        if done:
+            self.df_weights.iloc[self.current_index] = _next_weights
 
         return state, reward, done, info
 
@@ -286,6 +324,9 @@ class MarketEnv(gym.Env):
         self.reward=0
         self.drawdown = 0
         self.std = 0
+        self.total_fee_ratio = 0
+        self.df_weights = self.returns.copy()
+        self.df_weights.iloc[-1] = np.zeros(self.investments_count)
         # self.__ = min(2, self.__ * 1.04)
         return self._get_state()
 
@@ -328,5 +369,6 @@ class MarketEnv(gym.Env):
             'dd': self.drawdown,
             'episode': self.episode,
             'date':current_date.value,
+            'total_fee_ratio': self.total_fee_ratio,
         }
         return info

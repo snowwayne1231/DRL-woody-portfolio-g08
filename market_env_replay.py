@@ -12,11 +12,12 @@ import common
 from common.trainer import get_trainer
 from common.market_env import MarketEnv
 from common.finance_utility import finance_utility
-from common.market_env import simple_return_reward, sharpe_ratio_reward
+from common.market_env import simple_return_reward, sharpe_ratio_reward, proration_weights
 
 from rlkit.envs.wrappers import NormalizedBoxEnv
 from rlkit.torch.sac.policies import MakeDeterministic
 import rlkit.torch.pytorch_util as ptu
+
 
 
 def get_unwrapped_env(env):
@@ -32,13 +33,15 @@ def eval_policy(env, policy):
     actions=[]
     while not done:
         action = policy.get_actions(state)
-        print('action: ', np.max(action))
-        print('action argmax: ', np.argmax(action))
+
         info['date'] = Timestamp(info['date'] )
         infos.append(info)
         state, reward, done, info = env.step(action)
         actions.append(action)
-        weights.append((get_unwrapped_env(env)).weights)
+
+        get_env_weights = (get_unwrapped_env(env)).weights
+        # print('get_env_weights: ', get_env_weights)
+        weights.append(get_env_weights)
         rewards.append(reward)
 
     rewards = np.array(rewards)
@@ -84,7 +87,7 @@ for src in srcs:
     df_ret_val = pd.read_csv(os.path.join(src,'df_ret_val.csv'), parse_dates=['Date'], index_col=['Date'])
     df_feature = pd.read_csv(os.path.join(src,'df_feature.csv'), parse_dates=['Date'], index_col=['Date'])
 
-    validate_split_date = Timestamp('2019-03-01')
+    validate_split_date = Timestamp('2019-01-01')
     df_ret_val1 = df_ret_val[df_ret_val.index < validate_split_date]
     df_ret_val2 = df_ret_val[df_ret_val.index >= validate_split_date]
 
@@ -122,14 +125,14 @@ for src in srcs:
         # trainer.policy =  torch.load(file)['evaluation/policy']
         trainer.policy =  torch.load(file, map_location=torch.device('cpu'))['evaluation/policy']
         policy = MakeDeterministic(trainer.policy)
-        actions, weights,infos = eval_policy(env,policy)
+        actions, weights, infos = eval_policy(env,policy)
         actions.to_csv(os.path.join(log_dir,f'actions_{id}.csv'))
         weights.to_csv(os.path.join(log_dir,f'weights_{id}.csv'))
-        infos.to_csv(os.path.join(log_dir,f'infos_{id}.csv'))
-        actions = (weights.mean()-1) #Transfer weight back to action
-        crp_policy  = fix_action_policy(actions)
-        actions, weights,infos = eval_policy(env,crp_policy)
-        infos.to_csv(os.path.join(log_dir,f'infos_{id}_crp.csv'))
+        # infos.to_csv(os.path.join(log_dir,f'infos_{id}.csv'))
+        # actions = (weights.mean()-1) #Transfer weight back to action
+        # crp_policy  = fix_action_policy(actions)
+        # actions, weights,infos = eval_policy(env,crp_policy)
+        # infos.to_csv(os.path.join(log_dir,f'infos_{id}_crp.csv'))
         id+=1
 exit()
 
