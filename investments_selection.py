@@ -10,14 +10,14 @@ import math
 from pandas import Timestamp
 
 investment_count = 10
-validation_start_date = Timestamp('2017-03-01')
+validation_start_date = Timestamp('2019-01-01')
 
 
 current_folder = os.path.dirname(__file__)
 investments_returns_csv = os.path.join(
-    current_folder, './data/src/investments_67ETF.csv')
-investments_summary = os.path.join(
-    current_folder, './data/src/investments_summary.csv')
+    current_folder, './data/src/investments_10ETF.csv')
+# investments_summary = os.path.join(
+#     current_folder, './data/src/investments_summary.csv')
 output_folder = os.path.join(
     current_folder, f'./output/investments_{timestamp()}')
 if not os.path.exists(output_folder):
@@ -25,15 +25,15 @@ if not os.path.exists(output_folder):
 investments_returns = pd.read_csv(investments_returns_csv, parse_dates=[
     'Date'], index_col=['Date'])
 investments_returns = investments_returns.sort_index()
-investments_summary = pd.read_csv(investments_summary, index_col=0)
+# investments_summary = pd.read_csv(investments_summary, index_col=0)
 investment_names = investments_returns.columns[:]
 
 
 def average_return(s):
     return math.pow(np.prod(s+1), 1.0/len(s))-1
 
-def get_aum(s):
-    return investments_summary['AUM'][s]
+# def get_aum(s):
+#     return investments_summary['AUM'][s]
 
 
 cov_df = investments_returns.cov()
@@ -43,33 +43,33 @@ for name in cov_df.columns:
     cov_df[name][name] = np.nan
 cov_df = cov_df.applymap(lambda s: s if (s != 1) else np.nan)
 
-investments_summary['mdd'] = pd.Series(dtype='float64')
-investments_summary['std'] = pd.Series(dtype='float64')
-investments_summary['cagr'] = pd.Series(dtype='float64')
-investments_summary['sharpe'] = pd.Series(dtype='float64')
+# investments_summary['mdd'] = pd.Series(dtype='float64')
+# investments_summary['std'] = pd.Series(dtype='float64')
+# investments_summary['cagr'] = pd.Series(dtype='float64')
+# investments_summary['sharpe'] = pd.Series(dtype='float64')
 
 
 # Start from all investments
 selected_investments = set(investment_names)
 
 
-while len(selected_investments) > investment_count:
-    # Keep the one with highest AUM (Asset Under Management)
+# while len(selected_investments) > investment_count:
+#     # Keep the one with highest AUM (Asset Under Management)
 
-    # compare highist
-    def compare_func(k):
-        return ((cov_df[k].max(), get_aum(k)))
-    drop_name = sorted(selected_investments, key=compare_func)[-2]
-    keep_name = sorted(selected_investments, key=compare_func)[-1]
-    print(
-        f'drop {drop_name} {compare_func(drop_name)}, keep {keep_name} {compare_func(keep_name)}')
-    cov_df = cov_df.drop(drop_name, axis=0)
-    cov_df = cov_df.drop(drop_name, axis=1)
-    selected_investments.remove(drop_name)
+#     # compare highist
+#     def compare_func(k):
+#         return ((cov_df[k].max(), get_aum(k)))
+#     drop_name = sorted(selected_investments, key=compare_func)[-2]
+#     keep_name = sorted(selected_investments, key=compare_func)[-1]
+#     print(
+#         f'drop {drop_name} {compare_func(drop_name)}, keep {keep_name} {compare_func(keep_name)}')
+#     cov_df = cov_df.drop(drop_name, axis=0)
+#     cov_df = cov_df.drop(drop_name, axis=1)
+#     selected_investments.remove(drop_name)
 
-selected_investments=sorted(selected_investments)
-cov_df = cov_df.sort_index()
-print(f'selected_investments:{selected_investments}, count:{len(selected_investments)}')
+# selected_investments=sorted(selected_investments)
+# cov_df = cov_df.sort_index()
+# print(f'selected_investments:{selected_investments}, count:{len(selected_investments)}')
 
 for name in selected_investments:
     prices = finance_utility.prices_from_returns(investments_returns[name])
@@ -88,22 +88,22 @@ for name in selected_investments:
 
     df.to_csv(os.path.join(output_folder, f'{name}.csv'))
       
-    investments_summary.loc[name, 'mdd'] = mdd
-    investments_summary.loc[name, 'mean_dd'] =  draw_downs.mean()
-    investments_summary.loc[name, 'VaR99'] =  draw_downs.quantile(0.01)
-    investments_summary.loc[name, 'VaR90'] =  draw_downs.quantile(0.1)
-    investments_summary.loc[name, 'max_dd'] =  draw_downs.min()    
-    investments_summary.loc[name, 'std'] = std
-    investments_summary.loc[name, 'cagr'] = cagr_value
-    investments_summary.loc[name, 'sharpe'] = sharpe
+    # investments_summary.loc[name, 'mdd'] = mdd
+    # investments_summary.loc[name, 'mean_dd'] =  draw_downs.mean()
+    # investments_summary.loc[name, 'VaR99'] =  draw_downs.quantile(0.01)
+    # investments_summary.loc[name, 'VaR90'] =  draw_downs.quantile(0.1)
+    # investments_summary.loc[name, 'max_dd'] =  draw_downs.min()    
+    # investments_summary.loc[name, 'std'] = std
+    # investments_summary.loc[name, 'cagr'] = cagr_value
+    # investments_summary.loc[name, 'sharpe'] = sharpe
 
 
-cov_df = investments_summary.join(cov_df, how='right')
-cov_df.to_csv(os.path.join(output_folder, 'selected_cov.csv'))
-print(selected_investments)
+# cov_df = investments_summary.join(cov_df, how='right')
+# cov_df.to_csv(os.path.join(output_folder, 'selected_cov.csv'))
+# print(selected_investments)
 
 
-cov_df.to_csv(os.path.join(current_folder, './data/selected_investments.csv'))
+# cov_df.to_csv(os.path.join(current_folder, './data/selected_investments.csv'))
 
 # Create data for traininng
 df_train = investments_returns[investments_returns.index < validation_start_date][selected_investments]
