@@ -21,7 +21,7 @@ import gtimer as gt
 
 # fast_forward_scale = 1
 fast_forward_scale = 8  # for faster
-epoch_target = 500
+epoch_target = 1000
 
 
 gym.envs.register(id='MarketEnv-v0', entry_point='common.market_env:MarketEnv', max_episode_steps=1000)
@@ -115,7 +115,7 @@ def train_model(variant):
     )
 
     # fix variant['algorithm_kwargs']
-    variant['algorithm_kwargs']['num_eval_steps_per_epoch'] = ((len(eval_env.returns.index) -1) * variant['algorithm_kwargs']['batch_size'])
+    variant['algorithm_kwargs']['num_eval_steps_per_epoch'] = (len(eval_env.returns.index) -1) * int(variant['algorithm_kwargs']['batch_size'])
     
     # variant['algorithm_kwargs']['num_trains_per_train_loop'] = 16
     # variant['algorithm_kwargs']['num_expl_steps_per_train_loop'] = 16
@@ -182,7 +182,7 @@ variant = dict(
         # num_epochs=500,
         num_epochs=epoch_target,  # for simple test
         num_eval_steps_per_epoch=int(1000/fast_forward_scale),
-        num_trains_per_train_loop=int(3000/fast_forward_scale),
+        num_trains_per_train_loop=int(1000/fast_forward_scale),
         num_expl_steps_per_train_loop=int(1000/fast_forward_scale),
         min_num_steps_before_training=int(1000/fast_forward_scale),
         max_path_length=int(1000/fast_forward_scale),
