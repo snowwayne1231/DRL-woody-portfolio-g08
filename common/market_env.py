@@ -3,6 +3,7 @@ import math
 import os
 import numpy as np
 import gym
+import numpy
 from gym import spaces
 from gym.utils import seeding
 from random import uniform
@@ -10,7 +11,6 @@ from pandas import DataFrame
 
 
 # 手續費 
-# CHANGE_WEIGHT_FEE_RATIO = 0.00  #  sharp ratio 用在無手續費時績效好
 CHANGE_WEIGHT_FEE_RATIO = 0.02
 CHANGE_WEIGHT_STOCK_FEE_RATIO = 0.02
 # 只選前幾名標的
@@ -19,16 +19,18 @@ NUM_CHOICE_STOCK = 9
 RATIO_CONDITION_MAX_HOLD = 0.75
 
 
-def proration_weights(action):
-    if action.sum() == 0:
+def proration_weights(env, action):
+    while action.sum() == 0:
         action = np.random.rand(*action.shape)
     result = action / action.sum()
+    result = numpy.asarray(list(map(lambda x: (math.floor(x * 1000) / 1000), result)))
+    result[np.random.randint(*action.shape)] += 1-result.sum()
     return result
 
 # 改變持倉比率
 def proration_env_weights(env, action):
     if action.sum() == 0:
-        action = np.random.rand(*action.shape)
+       action = np.random.rand(*action.shape)
     _before_weights = env.weights
     _argsort = np.argsort(action)
     _chosen_indices = _argsort[::-1][:NUM_CHOICE_STOCK]
@@ -53,26 +55,29 @@ def proration_env_weights(env, action):
     return _gap_weights
 
 
-def simple_return_reward(env):
+def simple_return_reward(env,threshold: float=float("inf"), 
+                        alpha = 2,**kwargs):
     reward = env.profit
     return reward
 
 
-def sharpe_ratio_reward(env, **kwargs):
+def sharpe_ratio_reward(env, threshold: float=float("inf"), 
+                        alpha = 2,**kwargs):
     if env.std == 0:
         return 0
-    return env.mean / env.std
+    sharpe = env.mean / env.std
+    # if sharpe < threshold:
+    #     return sharpe - alpha*(threshold - abs(sharpe)) 
+    return sharpe
 
-     
     # r = env.profit
     # a = env.mean
-   
     # b = env.mean_square
     # if (b-a**2) == 0:
     #     reward = 0
     # else:
     #     sharpe_old = a/((b-a*2)*0.5)
-    #     eta = 0.06
+    #     eta = 0.05
     #     a_new = a * (1-eta)+eta*r
     #     b_new = b*(1-eta)+eta*r*r
     #     sharpe_new = a_new/((b_new-a_new*2)*0.5)
@@ -116,8 +121,8 @@ def resample_relative_changes(df, rule):
 
 class MarketEnv(gym.Env):
     def __init__(self, returns: DataFrame, features: DataFrame, show_info=False, trade_freq='days',
-                #  action_to_weights_func=proration_weights,
-                 action_to_weights_func=proration_env_weights,
+                 action_to_weights_func=proration_weights,
+                #  action_to_weights_func=proration_env_weights,
                  reward_func=simple_return_reward,
                  reward_func_kwargs=dict(),
                  noise=0,
@@ -201,81 +206,46 @@ class MarketEnv(gym.Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
-    # def step(self, action):
-    #     #print(f'step {self.returns.index[self.current_index]}')
-    #     if self.current_index > self.end_index:
-    #         raise Exception(f'current_index {self.current_index} exceed end_index{self.end_index}')
-
-    #     done = True if (self.current_index >= self.end_index) else False
-    #     # update weight
-    #     self.weights = self.action_to_weights_func(action)
-    #     self.episode += 1
-    #     self.current_index += 1
-    #     # update investments and wealth
-    #     previous_investments = self.investments
-    #     target_investments = self.wealth * self.weights
-
-    #     # todo add trading cost??
-    #     self.investments = target_investments
-
-    #     inv_return = self.returns.iloc[self.current_index]
-    #     previous_wealth = self.wealth
-    #     # w_n = w_n-1 * (1+r)
-    #     self.wealth = np.dot(self.investments, (1 + inv_return))
-    #     self.profit = (self.wealth - previous_wealth)/previous_wealth
-    #     # todo define new reward function
-    #     reward = self.reward_func(self,**self.reward_func_kwargs)
-    #     self.reward = reward
-
-    #     self.max_weath = max(self.wealth, self.max_weath)
-    #     self.drawdown = max(0, (self.max_weath - self.wealth) / self.max_weath)
-    #     self.max_drawdown = max(self.max_drawdown, self.drawdown)
-    #     self.mean = (self.mean * (self.episode-1) + self.profit)/self.episode
-    #     self.mean_square = (self.mean_square * (self.episode-1) + self.profit ** 2)/self.episode
-
-    #     info = self._get_info()
-    #     state = self._get_state()
-    #     return state, reward, done, info
-
     def step(self, action):
-        # print('action: ', action)
+        #print(f'step {self.returns.index[self.current_index]}')
         if self.current_index > self.end_index:
             raise Exception(f'current_index {self.current_index} exceed end_index{self.end_index}')
 
-        done = self.current_index >= self.end_index
-        _next_index = self.current_index + 1 # 下一筆 index
-        returns_now = self.returns.iloc[self.current_index] # 報酬率
-        returns_next = self.returns.iloc[_next_index]
+        done = True if (self.current_index >= self.end_index) else False
 
-        _previous_wealth = self.wealth # 資產比
-        _now_weights = self.weights # 持股
-        _investments = _previous_wealth * _now_weights
-        _return_wealth = np.dot(_investments, (1 + returns_now)) if _investments.sum() > 0 else 1 # 之前持股帶來的收益
-
-
-        _change_weights = self.action_to_weights_func(self, action) # 改變持股比例
-        _next_weights = _now_weights + _change_weights # action執行完後的持股
-        _investments_next = _previous_wealth * _next_weights
-        _return_wealth_next = np.dot(_investments_next, (1 + returns_next))
-
-        
-        _charge_fee_ratio = (np.abs(_change_weights) * CHANGE_WEIGHT_FEE_RATIO).sum() # 持倉變動算出 手續費比率
-        self.total_fee_ratio += _charge_fee_ratio
-        _charged_wealth = _return_wealth - _charge_fee_ratio # 收完收續費後的 資產
-
-        # reward = _return_wealth_next - _charged_wealth
+        _previous_weights = self.weights
+        # update weight
+        self.weights = self.action_to_weights_func(self,action)
+        # print('self.weights',self.weights)
+        change = _previous_weights - self.weights
         
         self.episode += 1
-        
-        self.profit = (_return_wealth_next - _charge_fee_ratio) / _previous_wealth
-        self.wealth = max(_charged_wealth, 0.01)
-        # self.wealth = _charged_wealth * (1+self.__)
-        
-        self.weights = _next_weights
-        self.df_weights.iloc[self.current_index] = _next_weights
-        
+        self.current_index += 1
+        # update investments and wealth
+        # previous_investments = self.investments        
+        # print('wealth',self.wealth)
+        target_investments = self.wealth * self.weights
+        # print('target_investments',target_investments)
+
+        # todo add trading cost??
+        self.investments = target_investments
+
+        inv_return = self.returns.iloc[self.current_index]
+
+        for i in range(len(change)):
+            if change[i] > 0:
+                fee = _previous_weights[i] * CHANGE_WEIGHT_FEE_RATIO * inv_return[i]
+                inv_return[i] =- fee
+                # print(fee)
+
+        # print('inv_return',inv_return)
+        previous_wealth = self.wealth
+        # w_n = w_n-1 * (1+r)
+        self.wealth = np.dot(self.investments, (1 + inv_return))
+        self.profit = (self.wealth - previous_wealth)/previous_wealth
+        # todo define new reward function
         reward = self.reward_func(self,**self.reward_func_kwargs)
-        self.reward += reward
+        self.reward = reward
 
         self.max_weath = max(self.wealth, self.max_weath)
         self.drawdown = max(0, (self.max_weath - self.wealth) / self.max_weath)
@@ -289,13 +259,72 @@ class MarketEnv(gym.Env):
             self.std = k*(b-a**2)**0.5
         info = self._get_info()
         state = self._get_state()
-        
-        self.current_index += 1
-
-        if done:
-            self.df_weights.iloc[self.current_index] = _next_weights
-
         return state, reward, done, info
+
+    # def step(self, action):
+    #     # print('action: ', action)
+    #     if self.current_index > self.end_index:
+    #         raise Exception(f'current_index {self.current_index} exceed end_index{self.end_index}')
+
+    #     done = self.current_index >= self.end_index
+    #     _next_index = self.current_index + 1 # 下一筆 index
+    #     returns_now = self.returns.iloc[self.current_index] # 報酬率
+    #     returns_next = self.returns.iloc[_next_index]
+
+    #     _previous_wealth = self.wealth # 資產比
+    #     _now_weights = self.weights # 持股
+    #     _investments = _previous_wealth * _now_weights
+    #     _return_wealth = np.dot(_investments, (1 + returns_now)) if _investments.sum() > 0 else 1 # 之前持股帶來的收益
+
+    #       #     # update weight
+    # #     self.weights = self.action_to_weights_func(action)
+
+      #     _change_weights = self.action_to_weights_func(self, action) # 改變持股比例
+
+    #     _next_weights = _now_weights + _change_weights # action執行完後的持股
+    #     _investments_next = _previous_wealth * _next_weights
+    #     _return_wealth_next = np.dot(_investments_next, (1 + returns_next))
+
+        
+    #     _charge_fee_ratio = (np.abs(_change_weights) * CHANGE_WEIGHT_FEE_RATIO).sum() # 持倉變動算出 手續費比率
+    #     self.total_fee_ratio += _charge_fee_ratio
+    #     _charged_wealth = _return_wealth - _charge_fee_ratio # 收完收續費後的 資產
+
+    #     # reward = _return_wealth_next - _charged_wealth
+        
+    #     self.episode += 1
+        
+    #     self.profit = (_return_wealth_next - _charge_fee_ratio) / _previous_wealth
+    #     self.wealth = max(_charged_wealth, 0.01)
+    #     # self.wealth = _charged_wealth * (1+self.__)
+        
+    #     self.weights = _next_weights
+    #     self.df_weights.iloc[self.current_index] = _next_weights
+        
+    #     reward = self.reward_func(self,**self.reward_func_kwargs)
+    #     self.reward += reward
+
+
+    #     self.max_weath = max(self.wealth, self.max_weath)
+    #     self.drawdown = max(0, (self.max_weath - self.wealth) / self.max_weath)
+    #     self.max_drawdown = max(self.max_drawdown, self.drawdown)
+    #     self.mean = (self.mean * (self.episode-1) + self.profit)/self.episode
+    #     self.mean_square = (self.mean_square * (self.episode-1) + self.profit ** 2)/self.episode
+        # if self.episode > 1:
+        #     k = ((self.episode)/(self.episode-1))**0.5
+        #     a = self.mean
+        #     b = self.mean_square
+        #     self.std = k*(b-a**2)**0.5
+
+    #     info = self._get_info()
+    #     state = self._get_state()
+        
+    #     self.current_index += 1
+
+    #     if done:
+    #         self.df_weights.iloc[self.current_index] = _next_weights
+
+    #     return state, reward, done, info
 
     def render(self):
         pass
@@ -343,8 +372,8 @@ class MarketEnv(gym.Env):
         start_date = self.returns.index[self.start_index]
         current_date = self.returns.index[self.current_index]
         trade_days = (current_date-start_date).days
-        if(trade_days ==0):
-            cagr =0
+        if trade_days == 0 or self.wealth <= 0:
+            cagr = 0
         else:
             cagr = math.pow(self.wealth, 365/trade_days) - 1
         if (self.episode <= 1):
