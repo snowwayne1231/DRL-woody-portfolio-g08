@@ -19,23 +19,18 @@ NUM_CHOICE_STOCK = 9
 RATIO_CONDITION_MAX_HOLD = 0.75
 
 
-def proration_weights(action):
-    if action.sum() == 0:
-        action = np.random.rand(*action.shape)
-    result = action / action.sum()
-    return result
-
 # 改變持倉比率
 def proration_env_weights(env, action):
     if action.sum() == 0:
         action = np.random.rand(*action.shape)
+    
     _before_weights = env.weights
     _argsort = np.argsort(action)
     _chosen_indices = _argsort[::-1][:NUM_CHOICE_STOCK]
     # _next_weights = action / action.sum()
 
     _next_weights = np.zeros(*action.shape)
-    _redistribute_weights = np.array([action[_i] / (idx+1) for idx, _i in enumerate(_chosen_indices)])
+    _redistribute_weights = np.array([action[_i] / 1+(idx * 0.2) for idx, _i in enumerate(_chosen_indices)])
     _redistribute_weights = _redistribute_weights / _redistribute_weights.sum()
 
     if _redistribute_weights[0] > RATIO_CONDITION_MAX_HOLD: # 排序過 第一個一定最大
@@ -53,41 +48,29 @@ def proration_env_weights(env, action):
     return _gap_weights
 
 
-def simple_return_reward(env):
+def simple_return_reward(env, **kwargs):
     reward = env.profit
     return reward
 
 
-def sharpe_ratio_reward(env, **kwargs):
-    if env.std == 0:
-        return 0
-    return env.mean / env.std
-
-     
-    # r = env.profit
-    # a = env.mean
-   
-    # b = env.mean_square
-    # if (b-a**2) == 0:
-    #     reward = 0
-    # else:
-    #     sharpe_old = a/((b-a*2)*0.5)
-    #     eta = 0.06
-    #     a_new = a * (1-eta)+eta*r
-    #     b_new = b*(1-eta)+eta*r*r
-    #     sharpe_new = a_new/((b_new-a_new*2)*0.5)
-    #     reward = sharpe_new-sharpe_old
-    # return reward
+def g8_focus_profit_reward(env, threshold, alpha, feerate, **kwargs):
+    profit = env.profit
+    if profit > threshold:
+        profit += 1
+    elif profit < 0:
+        profit -= 1
+    return (profit - (env.charge_fee_ratio * feerate)) * alpha
+    
 
 
 def sharpe_ratio_reward_g8_v2(env, threshold, alpha, **kwargs):
     if env.std == 0:
         return 0
     reward = env.mean / env.std
-    if env.profit < 0:
-        reward = (env.profit-1) * alpha
-    elif env.profit > threshold:
-        reward * alpha
+    # if env.profit < 0:
+    #     reward = (env.profit-1) * alpha
+    # elif env.profit > threshold:
+    #     reward * alpha
     return reward
 
 
@@ -116,7 +99,6 @@ def resample_relative_changes(df, rule):
 
 class MarketEnv(gym.Env):
     def __init__(self, returns: DataFrame, features: DataFrame, show_info=False, trade_freq='days',
-                #  action_to_weights_func=proration_weights,
                  action_to_weights_func=proration_env_weights,
                  reward_func=simple_return_reward,
                  reward_func_kwargs=dict(),
@@ -238,7 +220,7 @@ class MarketEnv(gym.Env):
     #     return state, reward, done, info
 
     def step(self, action):
-        # print('action: ', action)
+        # print('action (step): ', action)
         if self.current_index > self.end_index:
             raise Exception(f'current_index {self.current_index} exceed end_index{self.end_index}')
 
@@ -247,35 +229,39 @@ class MarketEnv(gym.Env):
         returns_now = self.returns.iloc[self.current_index] # 報酬率
         returns_next = self.returns.iloc[_next_index]
 
+        
+
         _previous_wealth = self.wealth # 資產比
         _now_weights = self.weights # 持股
         _investments = _previous_wealth * _now_weights
         _return_wealth = np.dot(_investments, (1 + returns_now)) if _investments.sum() > 0 else 1 # 之前持股帶來的收益
 
-
+        
         _change_weights = self.action_to_weights_func(self, action) # 改變持股比例
         _next_weights = _now_weights + _change_weights # action執行完後的持股
-        _investments_next = _previous_wealth * _next_weights
+        _investments_next = _return_wealth * _next_weights
         _return_wealth_next = np.dot(_investments_next, (1 + returns_next))
 
         
-        _charge_fee_ratio = (np.abs(_change_weights) * CHANGE_WEIGHT_FEE_RATIO).sum() # 持倉變動算出 手續費比率
-        self.total_fee_ratio += _charge_fee_ratio
-        _charged_wealth = _return_wealth - _charge_fee_ratio # 收完收續費後的 資產
+        self.charge_fee_ratio = (np.abs(_change_weights) * CHANGE_WEIGHT_FEE_RATIO).sum() # 持倉變動算出 手續費比率
+        self.total_fee_ratio += self.charge_fee_ratio
+        _charged_wealth = _return_wealth * (1 - self.charge_fee_ratio) # 收完收續費後的 資產
+
+        self.none_charge_wealth = np.dot((self.none_charge_wealth * _now_weights), 1 + returns_now) if _now_weights.sum() > 0 else 1
 
         # reward = _return_wealth_next - _charged_wealth
         
         self.episode += 1
         
-        self.profit = (_return_wealth_next - _charge_fee_ratio) / _previous_wealth
-        self.wealth = max(_charged_wealth, 0.01)
+        self.profit = (_return_wealth_next - _previous_wealth) / _previous_wealth
+        self.wealth = max(_charged_wealth, 0.0001)
         # self.wealth = _charged_wealth * (1+self.__)
         
         self.weights = _next_weights
         self.df_weights.iloc[self.current_index] = _next_weights
         
         reward = self.reward_func(self,**self.reward_func_kwargs)
-        self.reward += reward
+        self.total_reward += reward
 
         self.max_weath = max(self.wealth, self.max_weath)
         self.drawdown = max(0, (self.max_weath - self.wealth) / self.max_weath)
@@ -298,6 +284,7 @@ class MarketEnv(gym.Env):
         return state, reward, done, info
 
     def render(self):
+        # print('', self.weights * self.wealth)
         pass
 
     def reset(self):
@@ -321,12 +308,14 @@ class MarketEnv(gym.Env):
         self.mean_square = 0
         self.episode = 0
         self.profit=0
-        self.reward=0
+        self.total_reward=0
         self.drawdown = 0
         self.std = 0
+        self.charge_fee_ratio = 0
         self.total_fee_ratio = 0
         self.df_weights = self.returns.copy()
         self.df_weights.iloc[-1] = np.zeros(self.investments_count)
+        self.none_charge_wealth = 1
         # self.__ = min(2, self.__ * 1.04)
         return self._get_state()
 
@@ -365,10 +354,11 @@ class MarketEnv(gym.Env):
             'mean_square': self.mean_square,
             'mdd': self.max_drawdown,
             'profit': self.profit,
-            'reward': self.reward,
+            'total_reward': self.total_reward,
             'dd': self.drawdown,
             'episode': self.episode,
             'date':current_date.value,
             'total_fee_ratio': self.total_fee_ratio,
+            'none_charge_wealth': self.none_charge_wealth,
         }
         return info

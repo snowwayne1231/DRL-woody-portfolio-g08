@@ -10,7 +10,7 @@ import os
 import common
 import matplotlib.pyplot as plt
 from common.trainer import get_trainer
-from common.market_env import simple_return_reward, sharpe_ratio_reward, risk_adjusted_reward, sharpe_ratio_reward_g8_v2
+from common.market_env import simple_return_reward, risk_adjusted_reward, sharpe_ratio_reward_g8_v2, g8_focus_profit_reward
 from common.matplotlib_extend import plot_ma
 import rlkit.torch.pytorch_util as ptu
 import numpy as np
@@ -19,9 +19,10 @@ from rlkit.torch.torch_rl_algorithm import TorchBatchRLAlgorithm
 import gtimer as gt
 
 
-# fast_forward_scale = 1
+# fast_forward_scale = 8
 fast_forward_scale = 8  # for faster
-epoch_target = 1000
+epoch_target = 500
+eval_expl_reward_fn = sharpe_ratio_reward_g8_v2
 
 
 gym.envs.register(id='MarketEnv-v0', entry_point='common.market_env:MarketEnv', max_episode_steps=1000)
@@ -34,7 +35,7 @@ def load_dataset():
     # ret_csv_train = os.path.join(current_folder, './data/investments_returns_train.csv')
     # ret_csv_val = os.path.join(current_folder, './data/investments_returns_validation.csv')
     ret_csv_train = os.path.join(current_folder, './data/inv_returns_train.csv')
-    ret_csv_val = os.path.join(current_folder, './data/inv_returns_validation.csv')
+    ret_csv_val = os.path.join(current_folder, './data/inv_returns_validation_final.csv')
     # features_csv = os.path.join(current_folder, './data/features_v03.csv')
     features_csv = os.path.join(current_folder, './data/features_v04-g8.csv')
     df_ret_train = pd.read_csv(ret_csv_train, parse_dates=['Date'], index_col=['Date'])
@@ -42,65 +43,55 @@ def load_dataset():
     df_feature = pd.read_csv(features_csv, parse_dates=['Date'], index_col=['Date'])
     return df_ret_train, df_ret_val, df_feature
 
-def train_model(variant):
+def train_model(variant, log_dir, trainer, expl_env, eval_env, stamp):
     gt.reset_root()
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = f"./output/train_out_{timestamp}/"
 
-    setup_logger('name-of-experiment', variant=variant, snapshot_mode='gap_and_last', snapshot_gap=20, log_dir=log_dir)
-
-    expl_env_kwargs = variant['expl_env_kwargs']
-    eval_env_kwargs = variant['eval_env_kwargs']
-    trainer_kwargs = variant['trainer_kwargs']
-
-    df_ret_train, df_ret_val, df_feature = load_dataset()
-    df_ret_train.to_csv(os.path.join(log_dir, 'df_ret_train.csv'))
-    df_ret_val.to_csv(os.path.join(log_dir, 'df_ret_val.csv'))
-    df_feature.to_csv(os.path.join(log_dir, 'df_feature.csv'))
-    expl_env = NormalizedBoxEnv(gym.make('MarketEnv-v0', returns=df_ret_train, features=df_feature,
-                                         **expl_env_kwargs))
-
-    eval_env = NormalizedBoxEnv(gym.make('MarketEnv-v0', returns=df_ret_val, features=df_feature,
-                                         **eval_env_kwargs))
-
-    expl_env.features.to_csv(os.path.join(log_dir, 'env_loaded_train_features.csv')) # output the features after env parsed it
-    expl_env.returns.to_csv(os.path.join(log_dir, 'env_loaded_train_returns.csv')) # output the returns after env parsed it
-    eval_env.features.to_csv(os.path.join(log_dir, 'env_loaded_validation_features.csv'))
-    eval_env.returns.to_csv(os.path.join(log_dir, 'env_loaded_validation_returns.csv'))
-
-    __nl__mw = 1.05
+    # setup_logger('name-of-experiment', variant=variant, snapshot_mode='gap_and_last', snapshot_gap=int(epoch_target/2), log_dir=log_dir)
+    sub_log_dir = os.path.join(log_dir, f'_{stamp}/')
+    if not os.path.isdir(sub_log_dir):
+        os.mkdir(sub_log_dir)
+    __nl__maxwealth = 1.05
+    __nl__minwealth = 0.95
     def post_epoch_func(self, epoch):
-        nonlocal __nl__mw
-        n = int(epoch_target / 10)  #  for rolling
+        nonlocal __nl__maxwealth
+        nonlocal __nl__minwealth
+        nonlocal sub_log_dir
+        n = int(epoch_target / 10)  #  for rollilog_dirng
         round = epoch+1
+        
         if (round) % n == 0:
             progress_csv = os.path.join(log_dir, 'progress.csv')
             df = pd.read_csv(progress_csv)
-            kpis = ['cagr', 'dd', 'mdd', 'wealths','std']
+            kpis = ['cagr', 'dd', 'mdd', 'wealths','std', 'none_charge_wealth', 'total_reward']
             srcs = ['evaluation', 'exploration']
             
             for kpi in kpis:
                 series = map(lambda s: df[f'{s}/env_infos/final/{kpi} Mean'], srcs)
                 plot_ma(series=series, lables=srcs, title=f'[ {kpi.upper()} ]', n=n)
-                plt.savefig(os.path.join(log_dir, f'{kpi}.png'))
+                plt.savefig(os.path.join(sub_log_dir, f'{kpi}.png'))
                 plt.close()
 
         inner_eval_env = self.eval_env._wrapped_env
-        if inner_eval_env.wealth > __nl__mw:
-            __nl__mw = inner_eval_env.wealth
-            inner_eval_env.df_weights.fillna(0).applymap('{:,.2%}'.format).to_csv(os.path.join(log_dir, f'env_eval_weights_{round}_w{__nl__mw}.csv'))
-                # applymap(lambda x: f'{float(x) * 100} %')
+        if inner_eval_env.wealth > __nl__maxwealth:
+            __nl__maxwealth = inner_eval_env.wealth
+            _max_wealth_file_name = "{:.2f}".format(__nl__maxwealth)
+            inner_eval_env.df_weights.fillna(0).applymap('{:,.2%}'.format).to_csv(os.path.join(sub_log_dir, f'weights_{round}_w{_max_wealth_file_name}.csv'))
+        
+        if inner_eval_env.wealth < __nl__minwealth:
+            __nl__minwealth = inner_eval_env.wealth
+            _min_wealth_file_name = "{:.2f}".format(__nl__minwealth)
+            inner_eval_env.df_weights.fillna(0).applymap('{:,.2%}'.format).to_csv(os.path.join(sub_log_dir, f'weights_{round}_w{_min_wealth_file_name}.csv'))
 
         # print('post_epoch_func self.eval_env __dict__: ', self.eval_env.__dict__)
         # print(self.eval_env._wrapped_env.df_weights)
-            
+    
+    if trainer is None:
+        trainer_kwargs = variant['trainer_kwargs']
+        trainer = get_trainer(env=eval_env, **trainer_kwargs)
 
-    trainer = get_trainer(env=eval_env, **trainer_kwargs)
     policy = trainer.policy
     eval_policy = MakeDeterministic(policy)
-    # print('policy: ', policy)
-    # print('eval_policy: ', eval_policy)
-    #eval_policy = policy
+    
     eval_path_collector = MdpPathCollector(
         eval_env,
         eval_policy,
@@ -113,16 +104,6 @@ def train_model(variant):
         variant['replay_buffer_size'],
         expl_env,
     )
-
-    # fix variant['algorithm_kwargs']
-    variant['algorithm_kwargs']['num_eval_steps_per_epoch'] = (len(eval_env.returns.index) -1) * int(variant['algorithm_kwargs']['batch_size'])
-    
-    # variant['algorithm_kwargs']['num_trains_per_train_loop'] = 16
-    # variant['algorithm_kwargs']['num_expl_steps_per_train_loop'] = 16
-    # variant['algorithm_kwargs']['min_num_steps_before_training'] = 16
-    # variant['algorithm_kwargs']['max_path_length'] = 16
-    
-
     algorithm = TorchBatchRLAlgorithm(
         trainer=trainer,
         exploration_env=expl_env,
@@ -132,18 +113,23 @@ def train_model(variant):
         replay_buffer=replay_buffer,
         **variant['algorithm_kwargs']
     )
+
     try:
+    
         algorithm.post_epoch_funcs = [post_epoch_func, ]
         algorithm.to(ptu.device)
         algorithm.train()
+
     except KeyboardInterrupt:
         print('KeyboardInterrupt.')
         exit(2)
 
+    return trainer
+
 
 variant = dict(
     version="normal",
-    replay_buffer_size=int(1E6),
+    replay_buffer_size=int(1E3),
     trainer_kwargs=dict(
         algorithm="SAC", #Can be SAC, TD3, or DDPG
         hidden_sizes=[256, 256],
@@ -154,24 +140,26 @@ variant = dict(
         noise=0,
         # state_scale=0.3,
         state_scale=0.5,
-        # reward_func=sharpe_ratio_reward,
-        reward_func=sharpe_ratio_reward_g8_v2,
+        reward_func=eval_expl_reward_fn,
         reward_func_kwargs=dict(
-            threshold=0.03,
+            threshold=0.05,
+            alhpa=100,
+            feerate=0.02,
             drop_only=False
         )
         ,
         # trade_freq='weeks',
         trade_freq='months',
-        trade_pecentage=0.5
+        trade_pecentage=0.6
     ),
     eval_env_kwargs=dict(
         noise=0,
         state_scale=0.5,
-        # reward_func=sharpe_ratio_reward,
-        reward_func=sharpe_ratio_reward_g8_v2,
+        reward_func=eval_expl_reward_fn,
         reward_func_kwargs=dict(
-            threshold=0.02,
+            threshold=0.05,
+            feerate=0.02,
+            alhpa=200,
             drop_only=False
         ),
         # trade_freq='weeks',
@@ -190,10 +178,49 @@ variant = dict(
     )
 )
 
+
+
 if __name__ == '__main__':
     # for alpha in (3,2,1.5):
     # for alpha in [3, 2]:  # try 2 times
-    for alpha in [3]:
-        variant['eval_env_kwargs']['reward_func_kwargs']['alpha'] = alpha
+    alphas = [10, 20]
+    feeRates = [0.5, 1]
+    time = 1
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = f"./output/train_out_{timestamp}/"
+    expl_env_kwargs = variant['expl_env_kwargs']
+    eval_env_kwargs = variant['eval_env_kwargs']
+    setup_logger('name-of-experiment', variant=variant['expl_env_kwargs'], snapshot_mode='gap_and_last', snapshot_gap=int(epoch_target/2), log_dir=log_dir)
+
+    df_ret_train, df_ret_val, df_feature = load_dataset()
+    df_ret_train.to_csv(os.path.join(log_dir, 'df_ret_train.csv'))
+    df_ret_val.to_csv(os.path.join(log_dir, 'df_ret_val.csv'))
+    df_feature.to_csv(os.path.join(log_dir, 'df_feature.csv'))
+
+    trainer = None
+
+    for alpha, fee in zip(alphas, feeRates):
         variant['expl_env_kwargs']['reward_func_kwargs']['alpha'] = alpha
-        train_model(variant)
+        variant['eval_env_kwargs']['reward_func_kwargs']['alpha'] = alpha
+        variant['expl_env_kwargs']['reward_func_kwargs']['feerate'] = fee
+        variant['eval_env_kwargs']['reward_func_kwargs']['feerate'] = fee
+
+        expl_env_kwargs = variant['expl_env_kwargs']
+        eval_env_kwargs = variant['eval_env_kwargs']
+
+        expl_env = NormalizedBoxEnv(gym.make('MarketEnv-v0', returns=df_ret_train, features=df_feature,
+                                        **expl_env_kwargs))
+
+        eval_env = NormalizedBoxEnv(gym.make('MarketEnv-v0', returns=df_ret_val, features=df_feature,
+                                        **eval_env_kwargs))
+
+        variant['algorithm_kwargs']['num_eval_steps_per_epoch'] = (len(eval_env.returns.index) -1) * int(variant['algorithm_kwargs']['batch_size'])
+
+        if time == 1:
+            expl_env.features.to_csv(os.path.join(log_dir, 'env_loaded_train_features.csv')) # output the features after env parsed it
+            expl_env.returns.to_csv(os.path.join(log_dir, 'env_loaded_train_returns.csv')) # output the returns after env parsed it
+            eval_env.features.to_csv(os.path.join(log_dir, 'env_loaded_validation_features.csv'))
+            eval_env.returns.to_csv(os.path.join(log_dir, 'env_loaded_validation_returns.csv'))
+        
+        trainer = train_model(variant, log_dir=f"{log_dir}", trainer=trainer, expl_env=expl_env, eval_env=eval_env, stamp=time)
+        time += 1
