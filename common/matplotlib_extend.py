@@ -15,11 +15,12 @@ def set_matplotlib_style(mode=None):
             if matplotlib.rcParams[name]=='white':
                 matplotlib.rcParams[name] ='#0C0C3A'
 
-def plot_ma(series,lables,title,n):
+def plot_ma(series,lables,title,n, is_percentage=False):
     fig, ax = matplotlib.pyplot.subplots()
     _colors = ['#800080', '#008000', '#0000ff', 'orange', 'red', 'yellow', 'black']
     _c_idx = 0
-    ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter())
+    if is_percentage:
+        ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter())
     for s,label in zip(series,lables):
         x=range(len(s))
         y_std = s.rolling(n).std() * 100

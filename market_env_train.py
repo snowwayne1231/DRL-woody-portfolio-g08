@@ -20,9 +20,9 @@ import gtimer as gt
 
 
 # fast_forward_scale = 8
-fast_forward_scale = 8  # for faster
+fast_forward_scale = 20  # for faster
 epoch_target = 500
-eval_expl_reward_fn = sharpe_ratio_reward_g8_v2
+eval_expl_reward_fn = g8_focus_profit_reward
 
 
 gym.envs.register(id='MarketEnv-v0', entry_point='common.market_env:MarketEnv', max_episode_steps=1000)
@@ -67,7 +67,7 @@ def train_model(variant, log_dir, trainer, expl_env, eval_env, stamp):
             
             for kpi in kpis:
                 series = map(lambda s: df[f'{s}/env_infos/final/{kpi} Mean'], srcs)
-                plot_ma(series=series, lables=srcs, title=f'[ {kpi.upper()} ]', n=n)
+                plot_ma(series=series, lables=srcs, title=f'[ {kpi.upper()} ]', n=n, is_percentage=kpi in ['cagr', 'dd', 'mdd', 'wealths','std']), 
                 plt.savefig(os.path.join(sub_log_dir, f'{kpi}.png'))
                 plt.close()
 
@@ -184,7 +184,7 @@ if __name__ == '__main__':
     # for alpha in (3,2,1.5):
     # for alpha in [3, 2]:  # try 2 times
     alphas = [10, 20]
-    feeRates = [0.5, 1]
+    feeRates = [1, 1]
     time = 1
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_dir = f"./output/train_out_{timestamp}/"

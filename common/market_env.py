@@ -14,7 +14,7 @@ from pandas import DataFrame
 CHANGE_WEIGHT_FEE_RATIO = 0.02
 CHANGE_WEIGHT_STOCK_FEE_RATIO = 0.02
 # 只選前幾名標的
-NUM_CHOICE_STOCK = 9
+NUM_CHOICE_STOCK = 6
 # 最大持倉
 RATIO_CONDITION_MAX_HOLD = 0.75
 
@@ -23,11 +23,9 @@ RATIO_CONDITION_MAX_HOLD = 0.75
 def proration_env_weights(env, action):
     if action.sum() == 0:
         action = np.random.rand(*action.shape)
-    
     _before_weights = env.weights
     _argsort = np.argsort(action)
     _chosen_indices = _argsort[::-1][:NUM_CHOICE_STOCK]
-    # _next_weights = action / action.sum()
 
     _next_weights = np.zeros(*action.shape)
     _redistribute_weights = np.array([action[_i] / 1+(idx * 0.2) for idx, _i in enumerate(_chosen_indices)])
@@ -38,12 +36,10 @@ def proration_env_weights(env, action):
         _ratio_splited = (_redistribute_weights[0] - RATIO_CONDITION_MAX_HOLD) / (len(_redistribute_weights) -1) # 平均分散
         _redistribute_weights = _redistribute_weights + _ratio_splited
         _redistribute_weights[0] = RATIO_CONDITION_MAX_HOLD
-        
     
     for idx, _i in enumerate(_chosen_indices):
         _next_weights[_i] = _redistribute_weights[idx]
     
-    # print('_next_weights: ', _next_weights)
     _gap_weights = _next_weights - _before_weights
     return _gap_weights
 
@@ -67,10 +63,10 @@ def sharpe_ratio_reward_g8_v2(env, threshold, alpha, **kwargs):
     if env.std == 0:
         return 0
     reward = env.mean / env.std
-    # if env.profit < 0:
-    #     reward = (env.profit-1) * alpha
-    # elif env.profit > threshold:
-    #     reward * alpha
+    if env.profit < 0:
+        reward = (env.profit-1) * alpha
+    elif env.profit > threshold:
+        reward * alpha
     return reward
 
 
@@ -238,14 +234,19 @@ class MarketEnv(gym.Env):
 
         
         _change_weights = self.action_to_weights_func(self, action) # 改變持股比例
+        assert _change_weights.sum() < 0.01 or _now_weights.sum() == 0
         _next_weights = _now_weights + _change_weights # action執行完後的持股
+        assert _next_weights.sum() < 1.01
         _investments_next = _return_wealth * _next_weights
         _return_wealth_next = np.dot(_investments_next, (1 + returns_next))
 
         
         self.charge_fee_ratio = (np.abs(_change_weights) * CHANGE_WEIGHT_FEE_RATIO).sum() # 持倉變動算出 手續費比率
         self.total_fee_ratio += self.charge_fee_ratio
-        _charged_wealth = _return_wealth * (1 - self.charge_fee_ratio) # 收完收續費後的 資產
+        # print('charge_fee_ratio: ', self.charge_fee_ratio)
+        assert self.charge_fee_ratio < 0.041
+        _charged_wealth = _return_wealth - (_previous_wealth * self.charge_fee_ratio) # 收完收續費後的 資產
+        assert _charged_wealth < 10
 
         self.none_charge_wealth = np.dot((self.none_charge_wealth * _now_weights), 1 + returns_now) if _now_weights.sum() > 0 else 1
 
@@ -253,26 +254,29 @@ class MarketEnv(gym.Env):
         
         self.episode += 1
         
-        self.profit = (_return_wealth_next - _previous_wealth) / _previous_wealth
-        self.wealth = max(_charged_wealth, 0.0001)
+        self.profit = (_return_wealth_next - _return_wealth) / _return_wealth
+        self.wealth = _charged_wealth
         # self.wealth = _charged_wealth * (1+self.__)
         
         self.weights = _next_weights
         self.df_weights.iloc[self.current_index] = _next_weights
         
-        reward = self.reward_func(self,**self.reward_func_kwargs)
-        self.total_reward += reward
 
         self.max_weath = max(self.wealth, self.max_weath)
         self.drawdown = max(0, (self.max_weath - self.wealth) / self.max_weath)
         self.max_drawdown = max(self.max_drawdown, self.drawdown)
         self.mean = (self.mean * (self.episode-1) + self.profit)/self.episode
         self.mean_square = (self.mean_square * (self.episode-1) + self.profit ** 2)/self.episode
+
         if self.episode > 1:
             k = ((self.episode)/(self.episode-1))**0.5
             a = self.mean
             b = self.mean_square
             self.std = k*(b-a**2)**0.5
+
+        reward = self.reward_func(self,**self.reward_func_kwargs)
+        self.total_reward += reward
+
         info = self._get_info()
         state = self._get_state()
         
